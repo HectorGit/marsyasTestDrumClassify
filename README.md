@@ -1,8 +1,8 @@
-# MarsyasFeatureExtractionTest1_22Oct
+# FEATURE EXTRACTOR
 
-MarsyasFeatureExtractor.cpp is the entry file with the main()
-MarsyasFeatureExtractor creates a CentroidExtractor (net of MarSystems).
-And Extracts the centroid from an existing audio file.
+CURRENTLY JUST PRINTS NUMBERS OUT
+I WANT IT TO ACTUALLY CREATE AN ARFF FILE
+OR TO STORE THE RESULTS SOMEWHERE
 
 CentroidExtractor.cpp is the implmentation of CentroidExtractor.h
 
