@@ -20,20 +20,6 @@ DrumFeatureExtractor::~DrumFeatureExtractor()
 {
 }
 
-
-/*
-
-I AM ELIMINATING THE NEED FOR A .MPL OUTPUT FILE
-I JUST WANT THE FEATURES 
-
-This code works by loading an mpl file with a trained classifier.
-
-First run bextract to analyze examples and train a classifier
-bextract -e DRUMEXTRACT -f outputfile.mpl -w 512 -sr 44100.0
-
-Then run
-drumextract outputfile.mpl
-*/
 void DrumFeatureExtractor::extractDrumFeatures(string sfName1)
 {
 
@@ -49,13 +35,10 @@ void DrumFeatureExtractor::extractDrumFeatures(string sfName1)
 
 	//element 1 - THE AUDIO FILE
 	timeLoopNet->addMarSystem(theManager.create("SoundFileSource/src"));
-	//timeLoopNet->addMarSystem(theManager.create("AudioSource", "src"));
-	//timeLoopNet->linkControl("mrs_bool/hasData", "SoundFileSource/src/mrs_bool/hasData");
+	timeLoopNet->linkControl("mrs_bool/hasData", "SoundFileSource/src/mrs_bool/hasData");
 
-	//element 2 - THE PEAKER ? 
+	//element 2 - THE PEAKER 
 	timeLoopNet->addMarSystem(theManager.create("PeakerAdaptive", "peak"));
-
-	//set the peaker parameters. 
 	timeLoopNet->updControl("PeakerAdaptive/peak/mrs_natural/peakEnd", 512);
 	timeLoopNet->updControl("PeakerAdaptive/peak/mrs_real/peakSpacing", 0.5);
 	timeLoopNet->updControl("PeakerAdaptive/peak/mrs_real/peakStrength", 0.7);
@@ -64,62 +47,53 @@ void DrumFeatureExtractor::extractDrumFeatures(string sfName1)
 	timeLoopNet->updControl("PeakerAdaptive/peak/mrs_real/peakDecay", 0.9);
 	timeLoopNet->updControl("PeakerAdaptive/peak/mrs_real/peakGain", 0.5);
 
-	//2. CREATE A CONTROL THAT USES A FILE NAMED FILE.WAV
+	//2. CREATE A CONTROL THAT USES A FILE
 	timeLoopNet->linkControl("mrs_string/filename", "SoundFileSource/src/mrs_string/filename");
 	timeLoopNet->updControl("mrs_string/filename", sfName1);
 
 	//3. EXTRACT THE FEATURES
-	MarSystem* theExtractorNet = theManager.create("Series", "theExtractorNet");
+	//What options to use - feature aggregation?
+	MarSystem* theExtractorNet = theManager.create("Series", "theExtractorNet"); //nothing attached to it yet.
 	
 	MarSystem* spectimeFanout = theManager.create("Fanout", "spectimeFanout");
-	spectimeFanout->addMarSystem(theManager.create("ZeroCrossings", "zcrs"));
-	spectimeFanout->addMarSystem(theManager.create("Rms", "rms"));
+	spectimeFanout->addMarSystem(theManager.create("ZeroCrossings", "zcrs")); //1
+	spectimeFanout->addMarSystem(theManager.create("Rms", "rms"));            //2
 
 	MarSystem* theSpectralNet = theManager.create("Series", "theSpectralNet");
 	theSpectralNet->addMarSystem(theManager.create("Windowing", "ham"));
-	theSpectralNet->addMarSystem(theManager.create("Spectrum", "spk"));
-	theSpectralNet->addMarSystem(theManager.create("PowerSpectrum", "pspk"));
+	theSpectralNet->addMarSystem(theManager.create("Spectrum", "spk"));       //3
+	theSpectralNet->addMarSystem(theManager.create("PowerSpectrum", "pspk")); //4
 
 	MarSystem* featureFanout = theManager.create("Fanout", "featureFanout");
-	featureFanout->addMarSystem(theManager.create("Centroid", "centroid"));
-	featureFanout->addMarSystem(theManager.create("Rolloff", "rolloff"));
-	featureFanout->addMarSystem(theManager.create("MFCC", "mfcc"));
-	featureFanout->addMarSystem(theManager.create("Kurtosis", "kurtosis"));
-	featureFanout->addMarSystem(theManager.create("Skewness", "skewness"));
-	featureFanout->addMarSystem(theManager.create("SFM", "sfm"));
-	featureFanout->addMarSystem(theManager.create("SCF", "scf"));
+	featureFanout->addMarSystem(theManager.create("Centroid", "centroid"));   //5
+	featureFanout->addMarSystem(theManager.create("Rolloff", "rolloff"));     //6
+	featureFanout->addMarSystem(theManager.create("MFCC", "mfcc"));           //7
+	featureFanout->addMarSystem(theManager.create("Kurtosis", "kurtosis"));   //8
+	featureFanout->addMarSystem(theManager.create("Skewness", "skewness"));   //9
+	featureFanout->addMarSystem(theManager.create("SFM", "sfm"));             //10
+	featureFanout->addMarSystem(theManager.create("SCF", "scf"));             //11
 
 	// INTERCONNECT
-
 	theSpectralNet->addMarSystem(featureFanout);      // theExtractorNet contains(spectTimeFanout which contains ((theSpectralNet which contains featureFanout)))
-	spectimeFanout->addMarSystem(theSpectralNet);	  // if we place the weka sink at the highest level, it'd probably work.
+	spectimeFanout->addMarSystem(theSpectralNet);	  
 	theExtractorNet->addMarSystem(spectimeFanout);    // in the example, they created a whole 'series' just for the wekasink though.
-	//hypothetically,
-	//add the weka sink to theExtractorNet, since it's the one that 'contains' all.
-	////MarSystem* accum = theManager.create("Accumulator", "acc"); // needed for the weka out ! from the last example of this file
-	//OR MarSystem* acc = mng.create("Accumulator", "acc"); ?!
-	////accum->addMarSystem(theExtractorNet);
+	
+	//4. writing to a file. WEKA FILE
 
-	////MarSystem* total = theManager.create("Series", "total");
-	////total->addMarSystem(accum);
-	////total->updControl("Accumulator/acc/mrs_natural/nTimes", 1000);
-	//total->addMarSystem(statistics2);
+	MarSystem* accum = theManager.create("Accumulator", "acc"); 
+	accum->addMarSystem(theExtractorNet);
 
-	//total->addMarSystem(theManager.create("Annotator", "ann")); //what is this for
-	////total->addMarSystem(theManager.create("WekaSink", "wsink"));
+	MarSystem* total = theManager.create("Series", "total");
+	total->addMarSystem(accum);
+	total->updControl("Accumulator/acc/mrs_natural/nTimes", 1); //originally was 1000
+	total->addMarSystem(theManager.create("WekaSink", "wsink"));
 
-	//total->updControl("WekaSink/wsink/mrs_natural/nLabels", 3); //don't really have labels
-	////total->updControl("WekaSink/wsink/mrs_natural/downsample", 1); //divides number of sample
-	//total->updControl("WekaSink/wsink/mrs_string/labelNames", "garage,grunge,jazz,"); //shouldnt name nonexisting labels
-	////total->updControl("WekaSink/wsink/mrs_string/filename", "drumClassifyOutput.arff");
-	////total->updControl("mrs_natural/inSamples", 1024); //hmm... problemas?
-	//total->updControl("Annotator/ann/mrs_natural/label", 0); //hmm no idea what this does.
-	//you can set the label for the annotator. it adds a label to your output data.
-
-	//MAYBE WE SHOULD CREATE THE ACCUMULATOR AND WEKA SINK BEFORE, AND HOOK THEM UP THERE
+	total->updControl("WekaSink/wsink/mrs_natural/nLabels", 3); //don't really have labels
+	total->updControl("WekaSink/wsink/mrs_string/labelNames", "center,halfedge,rimshot");
+	total->updControl("WekaSink/wsink/mrs_string/filename", "drumClassifyOutput.arff");
+	total->updControl("mrs_natural/inSamples", 512); //How can we do -sv mode like bextract.cpp????
 
 	// FOR SOME REASON SETTING UP THIS - might be unnecessary
-
 	theExtractorNet->updControl("mrs_natural/inSamples", 512);
 	theExtractorNet->updControl("mrs_natural/onSamples", 512);
 	theExtractorNet->updControl("mrs_real/israte", 44100.0);
@@ -129,8 +103,6 @@ void DrumFeatureExtractor::extractDrumFeatures(string sfName1)
 	realvec out1;
 	realvec out2;
 
-	//getting 'observations' - I don't think necessary
-	//it is used later on though...
 	in1.create(timeLoopNet->getctrl("mrs_natural/inObservations")->to<mrs_natural>(),
 		timeLoopNet->getctrl("mrs_natural/inSamples")->to<mrs_natural>());
 
@@ -140,39 +112,28 @@ void DrumFeatureExtractor::extractDrumFeatures(string sfName1)
 	out2.create(theExtractorNet->getctrl("mrs_natural/onObservations")->to<mrs_natural>(),
 		theExtractorNet->getctrl("mrs_natural/onSamples")->to<mrs_natural>());
 	
-	//4. PRINT THEM FOR NOW WITH COUT - WE NEED A FILE SINK. ARFF OR MPL OR SMTH.
-	//IN THE FUTURE, STORE THEM , OR PUT THEM OUT
-	//TO A FILE SOMEHOW. IGNORE OTHER CODE.
+	//4. writing to a file. TXT FILES
 
-	//Text file output - from chroma example
-	//theNewSystem = theManager.create("RealvecSink", "TextFileOutput");
-	//timeLoopNet->addMarSystem(theNewSystem);
-	//theControlString = "RealvecSink/TextFileOutput/mrs_string/fileName";
-	//timeLoopNet->updControl(theControlString, inTextFileName);
-
-	//accum->addMarSystem(cnet);
-	//net->addMarSystem(accum);
-
-	//6. PUT CIN.GET TO MAKE THINGS GOOD.
-
-	// ------------------------------------------------------------------
-	// BELOW THIS LINE NO IDEA HOW I COULD USE IN THE IMPLEMENTATION
-	//LOOK AT BEXTRACT.CPP HOW IS -sv DONE? single vector
-	// ------------------------------------------------------------------
+	string outFileName = "output_file_txt.txt";
+	MarSystem* theNewSystem = theManager.create("RealvecSink", "TextFileOutput");
+	timeLoopNet->addMarSystem(theNewSystem);
+	string theControlString = "RealvecSink/TextFileOutput/mrs_string/fileName";
+	timeLoopNet->updControl(theControlString, outFileName);
 
 	// PeakerAdaptive looks for hits and then if it finds one reports a non-zero value
 	// When a non-zero value is found theExtractorNet is ticked
 	while (timeLoopNet->getctrl("SoundFileSource/src/mrs_bool/hasData")->to<mrs_bool>())
 	{
-		timeLoopNet->process(in1, out1); // THIS IS WEIRD
+		timeLoopNet->process(in1, out1); // No idea why this is needed.
 		for (int i = 0; i < windowsize; ++i)
 		{
 			if (out1(i) > 0)
 			{
 				theExtractorNet->process(out1, out2);
-				//total->tick();//i don't think this will work.
-				cout << *theExtractorNet << endl;
-				cout << out2 << endl;
+				total->tick();
+				//cout << "\n processedData : \n" << theExtractorNet->getctrl("mrs_realvec/processedData")->to<mrs_realvec>() << "\n";
+				//cout << *theExtractorNet << endl;
+				//cout << out2 << endl;
 			}
 		}
 	}
